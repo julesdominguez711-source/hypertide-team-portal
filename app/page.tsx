@@ -235,6 +235,7 @@ export default function Home() {
   const [tab, setTab] = useState('Dashboard')
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
+  const [signupCompleted, setSignupCompleted] = useState(false)
 
   async function refreshProfile(uid?: string) {
     const id = uid || userId
@@ -282,7 +283,15 @@ export default function Home() {
     )
   }
 
-  if (!userId) return <AuthScreen />
+  if (!userId) {
+    return (
+      <AuthScreen
+        signupCompleted={signupCompleted}
+        setSignupCompleted={setSignupCompleted}
+      />
+    )
+  }
+
   if (!profile?.onboarding_complete) return <Onboarding onDone={() => refreshProfile()} />
 
   if (profile.status === 'pending') {
@@ -391,30 +400,76 @@ function Center({ children }: { children: ReactNode }) {
   return <div className="auth-wrap">{children}</div>
 }
 
-function AuthScreen() {
+function AuthScreen({
+  signupCompleted,
+  setSignupCompleted,
+}: {
+  signupCompleted: boolean
+  setSignupCompleted: (value: boolean) => void
+}) {
   const [mode, setMode] = useState<'login' | 'signup'>('login')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
   const [busy, setBusy] = useState(false)
-  const [notice, setNotice] = useState('')
   const [error, setError] = useState('')
 
   async function submit(event: FormEvent) {
     event.preventDefault()
     setBusy(true)
     setError('')
-    setNotice('')
 
     if (mode === 'signup') {
+      if (password !== confirmPassword) {
+        setError('Passwords do not match.')
+        setBusy(false)
+        return
+      }
+
       const { error: authError } = await supabase.auth.signUp({ email, password })
-      if (authError) setError(authError.message)
-      else setNotice('Account created. Check your email if confirmation is enabled, then sign in.')
+
+      if (authError) {
+        setError(authError.message)
+      } else {
+        setSignupCompleted(true)
+        await supabase.auth.signOut()
+        setPassword('')
+        setConfirmPassword('')
+      }
     } else {
       const { error: authError } = await supabase.auth.signInWithPassword({ email, password })
       if (authError) setError(authError.message)
     }
 
     setBusy(false)
+  }
+
+  if (signupCompleted) {
+    return (
+      <Center>
+        <div className="card auth-card">
+          <h1 className="title">Account created successfully</h1>
+          <p className="subtitle">
+            Your account is ready. Sign in with your email and password to continue your profile setup.
+          </p>
+          <div className="success" style={{ marginBottom: 16 }}>
+            Registration successful.
+          </div>
+          <button
+            type="button"
+            className="btn btn-primary"
+            style={{ width: '100%' }}
+            onClick={() => {
+              setSignupCompleted(false)
+              setMode('login')
+              setError('')
+            }}
+          >
+            Go to Login
+          </button>
+        </div>
+      </Center>
+    )
   }
 
   return (
@@ -445,8 +500,20 @@ function AuthScreen() {
             />
           </label>
 
+          {mode === 'signup' && (
+            <label className="field">
+              <span>Confirm Password</span>
+              <input
+                type="password"
+                value={confirmPassword}
+                onChange={(event) => setConfirmPassword(event.target.value)}
+                minLength={8}
+                required
+              />
+            </label>
+          )}
+
           {error && <div className="error">{error}</div>}
-          {notice && <div className="success">{notice}</div>}
 
           <button type="submit" className="btn btn-primary" disabled={busy}>
             {busy ? 'Please wait…' : mode === 'login' ? 'Sign in' : 'Create account'}
@@ -457,7 +524,11 @@ function AuthScreen() {
           type="button"
           className="btn btn-secondary"
           style={{ marginTop: 12, width: '100%' }}
-          onClick={() => setMode(mode === 'login' ? 'signup' : 'login')}
+          onClick={() => {
+            setMode(mode === 'login' ? 'signup' : 'login')
+            setConfirmPassword('')
+            setError('')
+          }}
         >
           {mode === 'login' ? 'Create a new account' : 'Already have an account? Sign in'}
         </button>
@@ -821,27 +892,41 @@ function TimeTracking({
         <p className="muted">Server time is used for attendance.</p>
         <div className="actions">
           {!entry && (
-            <button className="btn btn-primary" onClick={() => run('clock_in_now', 'Clocked in successfully.')}>
+            <button
+              className="btn btn-primary"
+              onClick={() => run('clock_in_now', 'Clocked in successfully.')}
+            >
               Clock In
             </button>
           )}
           {entry && !onBreak && (
-            <button className="btn btn-secondary" onClick={() => run('start_paid_break', 'Paid break started.')}>
+            <button
+              className="btn btn-secondary"
+              onClick={() => run('start_paid_break', 'Paid break started.')}
+            >
               Start Break
             </button>
           )}
           {entry && onBreak && (
-            <button className="btn btn-secondary" onClick={() => run('end_paid_break', 'Break ended.')}>
+            <button
+              className="btn btn-secondary"
+              onClick={() => run('end_paid_break', 'Break ended.')}
+            >
               Resume Work
             </button>
           )}
           {entry && (
-            <button className="btn btn-primary" onClick={() => run('clock_out_now', 'Clocked out successfully.')}>
+            <button
+              className="btn btn-primary"
+              onClick={() => run('clock_out_now', 'Clocked out successfully.')}
+            >
               Clock Out
             </button>
           )}
         </div>
-        {entry && <p className="muted">Clocked in: {new Date(entry.clock_in).toLocaleString()}</p>}
+        {entry && (
+          <p className="muted">Clocked in: {new Date(entry.clock_in).toLocaleString()}</p>
+        )}
       </div>
 
       <div className="card">
@@ -1082,7 +1167,9 @@ function Manager() {
 
     const rows = (data || []) as Profile[]
     setAll(rows)
-    setPending(rows.filter((profile) => profile.status === 'pending' && profile.onboarding_complete))
+    setPending(
+      rows.filter((profile) => profile.status === 'pending' && profile.onboarding_complete),
+    )
     setManagers((managerData || []) as ManagerOption[])
   }
 
