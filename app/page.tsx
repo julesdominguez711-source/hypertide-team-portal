@@ -162,7 +162,7 @@ export default function Home() {
         {error && <div className="error portal-alert">{error}</div>}
 
         {tab === 'Dashboard' && <PortalDashboard profile={profile} />}
-        {tab === 'Time Tracking' && <PortalTimeTracking onMessage={setMessage} onError={setError} />}
+        {tab === 'Time Tracking' && <PortalTimeTracking employeeId={profile.id} onMessage={setMessage} onError={setError} />}
         {tab === 'Leave' && <LeavePanel profile={profile} onMessage={setMessage} onError={setError} />}
         {tab === 'Schedule' && <PortalSchedule profile={profile} />}
         {tab === 'Manager' && management && <PortalManager onMessage={setMessage} onError={setError} />}
