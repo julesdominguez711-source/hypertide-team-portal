@@ -19,9 +19,23 @@ type LeaveSummary = {
   today: string
 }
 
+type LeaveDay = {
+  date: string
+  start_time: string | null
+  end_time: string | null
+  timezone: string | null
+  scheduled_minutes: number
+  scheduled_hours: number
+  max_credits: number
+  requested_credits: number
+  leave_period: 'full_shift' | 'first_half' | 'second_half'
+  adjustable: boolean
+}
+
 type LeavePreview = {
   scheduled_days: number
   scheduled_dates: string[]
+  day_details: LeaveDay[]
   credits: number
   available_balance: number
   lead_days: number
@@ -48,6 +62,23 @@ type LeaveHistory = {
   created_at: string
 }
 
+type StoredLeaveDay = {
+  leave_request_id: string
+  leave_date: string
+  scheduled_minutes: number
+  scheduled_credits: number
+  requested_credits: number
+  leave_period: 'full_shift' | 'first_half' | 'second_half'
+}
+
+type ReviewDay = {
+  date: string
+  scheduled_minutes: number
+  scheduled_credits: number
+  requested_credits: number
+  leave_period: 'full_shift' | 'first_half' | 'second_half'
+}
+
 type ReviewRow = {
   id: string
   employee_id: string
@@ -56,13 +87,17 @@ type ReviewRow = {
   leave_type: string
   start_date: string
   end_date: string
-  day_type: string
-  half_day_period: string | null
   credits_requested: number
   reason: string | null
   status: string
   approval_mode: string | null
   created_at: string
+  day_breakdown: ReviewDay[]
+}
+
+type DayAdjustment = {
+  credits: number
+  period: 'full_shift' | 'first_half' | 'second_half'
 }
 
 const supabase = createClient()
@@ -86,6 +121,19 @@ function formatDate(value: string | null) {
   return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).format(date)
 }
 
+function formatTime(value: string | null) {
+  if (!value) return '—'
+  const [hourText, minuteText] = value.slice(0, 5).split(':')
+  const hour = Number(hourText)
+  const suffix = hour >= 12 ? 'PM' : 'AM'
+  const displayHour = hour % 12 || 12
+  return `${displayHour}:${minuteText} ${suffix}`
+}
+
+function creditLabel(value: number) {
+  return `${value} credit${value === 1 ? '' : 's'}`
+}
+
 export default function LeavePanel({
   profile,
   onMessage,
@@ -99,18 +147,24 @@ export default function LeavePanel({
   const [type, setType] = useState<'vacation' | 'sick'>('vacation')
   const [start, setStart] = useState('')
   const [end, setEnd] = useState('')
-  const [dayType, setDayType] = useState<'full' | 'half'>('full')
-  const [halfDayPeriod, setHalfDayPeriod] = useState<'first_half' | 'second_half'>('first_half')
   const [reason, setReason] = useState('')
   const [summary, setSummary] = useState<LeaveSummary | null>(null)
   const [preview, setPreview] = useState<LeavePreview | null>(null)
   const [previewError, setPreviewError] = useState('')
   const [history, setHistory] = useState<LeaveHistory[]>([])
+  const [historyDays, setHistoryDays] = useState<Record<string, StoredLeaveDay[]>>({})
   const [reviewRows, setReviewRows] = useState<ReviewRow[]>([])
+  const [dayAdjustments, setDayAdjustments] = useState<Record<string, DayAdjustment>>({})
+  const [adjustModalOpen, setAdjustModalOpen] = useState(false)
   const [loading, setLoading] = useState(true)
   const [previewBusy, setPreviewBusy] = useState(false)
   const [submitBusy, setSubmitBusy] = useState(false)
   const [reviewBusyId, setReviewBusyId] = useState('')
+
+  const adjustmentPayload = useMemo(
+    () => Object.entries(dayAdjustments).map(([date, value]) => ({ date, credits: value.credits, period: value.period })),
+    [dayAdjustments],
+  )
 
   async function load() {
     setLoading(true)
@@ -120,14 +174,20 @@ export default function LeavePanel({
       .select('id,leave_type,start_date,end_date,day_type,half_day_period,credits_requested,reason,status,approval_mode,review_note,created_at')
       .eq('employee_id', profile.id)
       .order('created_at', { ascending: false })
+    const historyDaysPromise = supabase
+      .from('leave_request_days')
+      .select('leave_request_id,leave_date,scheduled_minutes,scheduled_credits,requested_credits,leave_period')
+      .eq('employee_id', profile.id)
+      .order('leave_date', { ascending: true })
 
     const reviewPromise = management
-      ? supabase.rpc('list_leave_requests_for_review')
+      ? supabase.rpc('list_leave_requests_for_review_v2')
       : Promise.resolve({ data: [] as ReviewRow[], error: null })
 
-    const [summaryResult, historyResult, reviewResult] = await Promise.all([
+    const [summaryResult, historyResult, historyDaysResult, reviewResult] = await Promise.all([
       summaryPromise,
       historyPromise,
+      historyDaysPromise,
       reviewPromise,
     ])
 
@@ -136,6 +196,17 @@ export default function LeavePanel({
 
     if (historyResult.error) onError(historyResult.error.message)
     else setHistory((historyResult.data || []) as LeaveHistory[])
+
+    if (historyDaysResult.error) {
+      onError(historyDaysResult.error.message)
+    } else {
+      const grouped: Record<string, StoredLeaveDay[]> = {}
+      for (const row of (historyDaysResult.data || []) as StoredLeaveDay[]) {
+        if (!grouped[row.leave_request_id]) grouped[row.leave_request_id] = []
+        grouped[row.leave_request_id].push(row)
+      }
+      setHistoryDays(grouped)
+    }
 
     if (reviewResult.error) onError(reviewResult.error.message)
     else setReviewRows((reviewResult.data || []) as ReviewRow[])
@@ -154,13 +225,12 @@ export default function LeavePanel({
       setPreview(null)
       setPreviewError('')
       if (!start || !end) return
-      if (dayType === 'half' && start !== end) return
 
       setPreviewBusy(true)
-      const { data, error } = await supabase.rpc('preview_my_leave_request', {
+      const { data, error } = await supabase.rpc('preview_my_leave_request_v2', {
         p_start_date: start,
         p_end_date: end,
-        p_day_type: dayType,
+        p_day_adjustments: adjustmentPayload,
       })
 
       if (!cancelled) {
@@ -175,21 +245,42 @@ export default function LeavePanel({
       cancelled = true
       window.clearTimeout(timer)
     }
-  }, [start, end, dayType])
+  }, [start, end, adjustmentPayload])
 
   const canSubmit = useMemo(() => {
     if (!preview || previewBusy || submitBusy) return false
     return preview.start_scheduled && preview.end_scheduled && preview.scheduled_days > 0 && preview.has_enough_balance
   }, [preview, previewBusy, submitBusy])
 
-  function changeDayType(value: 'full' | 'half') {
-    setDayType(value)
-    if (value === 'half' && start) setEnd(start)
+  function resetAdjustments() {
+    setDayAdjustments({})
+    setAdjustModalOpen(false)
   }
 
   function changeStart(value: string) {
     setStart(value)
-    if (dayType === 'half') setEnd(value)
+    if (end && value > end) setEnd(value)
+    resetAdjustments()
+  }
+
+  function changeEnd(value: string) {
+    setEnd(value)
+    resetAdjustments()
+  }
+
+  function setDayCredits(day: LeaveDay, credits: number) {
+    const period: DayAdjustment['period'] = credits === 0.5 && day.max_credits === 1 ? 'first_half' : 'full_shift'
+    setDayAdjustments((current) => ({ ...current, [day.date]: { credits, period } }))
+  }
+
+  function setDayPeriod(day: LeaveDay, period: 'first_half' | 'second_half') {
+    setDayAdjustments((current) => ({
+      ...current,
+      [day.date]: {
+        credits: current[day.date]?.credits ?? day.requested_credits,
+        period,
+      },
+    }))
   }
 
   async function submit(event: FormEvent) {
@@ -200,28 +291,29 @@ export default function LeavePanel({
     onError('')
     onMessage('')
 
-    const { data, error } = await supabase.rpc('submit_leave_request', {
+    const { data, error } = await supabase.rpc('submit_leave_request_v2', {
       p_leave_type: type,
       p_start_date: start,
       p_end_date: end,
-      p_day_type: dayType,
-      p_half_day_period: dayType === 'half' ? halfDayPeriod : null,
       p_reason: reason || null,
+      p_day_adjustments: adjustmentPayload,
     })
 
     if (error) {
       onError(error.message)
     } else {
-      const result = data as { status: string; approval_mode: string }
+      const result = data as { status: string; approval_mode: string; credits: number }
       onMessage(
         result.status === 'approved'
-          ? 'Leave approved automatically and credits were deducted.'
-          : 'Leave request submitted for Manager approval.',
+          ? `Leave approved automatically. ${creditLabel(result.credits)} deducted.`
+          : `Leave request submitted for Manager approval (${creditLabel(result.credits)}).`,
       )
       setStart('')
       setEnd('')
       setReason('')
       setPreview(null)
+      setDayAdjustments({})
+      setAdjustModalOpen(false)
       await load()
     }
 
@@ -286,9 +378,9 @@ export default function LeavePanel({
           <div className="section-head">
             <div>
               <h2>File leave</h2>
-              <p className="muted">Only scheduled working dates are charged leave credits.</p>
+              <p className="muted">Credits follow the hours scheduled on each leave date.</p>
             </div>
-            <span className="pill">1 credit = 8 hours</span>
+            <span className="pill">8h = 1 credit · 4h = 0.5</span>
           </div>
 
           <form className="stack" onSubmit={submit} onKeyDown={preventEnterSubmit}>
@@ -301,13 +393,10 @@ export default function LeavePanel({
                 </select>
               </label>
 
-              <label className="field">
-                <span>Day type</span>
-                <select value={dayType} onChange={(event) => changeDayType(event.target.value as 'full' | 'half')}>
-                  <option value="full">Full day · 1 credit per scheduled day</option>
-                  <option value="half">Half day · 0.5 credit</option>
-                </select>
-              </label>
+              <div className="field leave-credit-hint">
+                <span>Per-day leave amount</span>
+                <div>Automatically calculated from each scheduled shift. You can adjust eligible 8-hour days before submitting.</div>
+              </div>
 
               <label className="field">
                 <span>Start date</span>
@@ -320,21 +409,10 @@ export default function LeavePanel({
                   type="date"
                   value={end}
                   min={start || undefined}
-                  disabled={dayType === 'half'}
-                  onChange={(event) => setEnd(event.target.value)}
+                  onChange={(event) => changeEnd(event.target.value)}
                   required
                 />
               </label>
-
-              {dayType === 'half' && (
-                <label className="field">
-                  <span>Half-day period</span>
-                  <select value={halfDayPeriod} onChange={(event) => setHalfDayPeriod(event.target.value as 'first_half' | 'second_half')}>
-                    <option value="first_half">First half · 4 hours</option>
-                    <option value="second_half">Second half · 4 hours</option>
-                  </select>
-                </label>
-              )}
             </div>
 
             <label className="field">
@@ -351,11 +429,18 @@ export default function LeavePanel({
                     <div className="leave-preview-top">
                       <div>
                         <strong>{preview.scheduled_days} scheduled day{preview.scheduled_days === 1 ? '' : 's'}</strong>
-                        <div className="muted">{preview.credits} credit{preview.credits === 1 ? '' : 's'} will be used</div>
+                        <div className="muted">{creditLabel(preview.credits)} will be used</div>
                       </div>
-                      <span className={`status-badge ${preview.auto_eligible ? 'approved' : 'pending'}`}>
-                        {preview.auto_eligible ? 'Auto-approval eligible' : 'Manager approval'}
-                      </span>
+                      <div className="actions">
+                        {preview.day_details.length > 0 && (
+                          <button type="button" className="btn btn-secondary btn-small" onClick={() => setAdjustModalOpen(true)}>
+                            Adjust days
+                          </button>
+                        )}
+                        <span className={`status-badge ${preview.auto_eligible ? 'approved' : 'pending'}`}>
+                          {preview.auto_eligible ? 'Auto-approval eligible' : 'Manager approval'}
+                        </span>
+                      </div>
                     </div>
 
                     {!preview.start_scheduled || !preview.end_scheduled ? (
@@ -370,9 +455,13 @@ export default function LeavePanel({
                       </div>
                     )}
 
-                    {preview.scheduled_dates.length > 0 && (
-                      <div className="leave-date-chips">
-                        {preview.scheduled_dates.map((date) => <span key={date}>{formatDate(date)}</span>)}
+                    {preview.day_details.length > 0 && (
+                      <div className="leave-date-chips detailed">
+                        {preview.day_details.map((day) => (
+                          <span key={day.date}>
+                            {formatDate(day.date)} · {day.scheduled_hours}h · {day.requested_credits} cr
+                          </span>
+                        ))}
                       </div>
                     )}
                   </>
@@ -391,6 +480,7 @@ export default function LeavePanel({
           <div className="leave-rule-list">
             <div><strong>Starting balance</strong><span>3 credits from Aug 1, 2026</span></div>
             <div><strong>Monthly accrual</strong><span>+1.5 credits each month</span></div>
+            <div><strong>Scheduled shift credits</strong><span>Up to 4 hours = 0.5 · over 4 hours = 1</span></div>
             <div><strong>5+ days notice</strong><span>Up to 5 scheduled days auto-approved</span></div>
             <div><strong>Under 5 days notice</strong><span>Up to 2 scheduled days auto-approved</span></div>
             <div><strong>Carryover</strong><span>Maximum 3 credits</span></div>
@@ -418,9 +508,19 @@ export default function LeavePanel({
                   <strong>{row.employee_name}</strong>
                   <div className="muted">{row.employee_email}</div>
                   <div className="leave-review-detail">
-                    {pretty(row.leave_type)} · {formatDate(row.start_date)} to {formatDate(row.end_date)} · {row.credits_requested} credit(s)
+                    {pretty(row.leave_type)} · {formatDate(row.start_date)} to {formatDate(row.end_date)} · {creditLabel(Number(row.credits_requested))}
                   </div>
-                  {row.reason && <div className="muted">“{row.reason}”</div>}
+                  {row.day_breakdown?.length > 0 && (
+                    <div className="leave-date-chips detailed review-chips">
+                      {row.day_breakdown.map((day) => (
+                        <span key={day.date}>
+                          {formatDate(day.date)} · {Math.round(day.scheduled_minutes / 6) / 10}h · {Number(day.requested_credits)} cr
+                          {day.leave_period !== 'full_shift' ? ` · ${pretty(day.leave_period)}` : ''}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  {row.reason && <div className="muted leave-reason">“{row.reason}”</div>}
                 </div>
                 <div className="actions">
                   <button className="btn btn-secondary" disabled={reviewBusyId === row.id} onClick={() => review(row.id, 'reject')}>Reject</button>
@@ -445,23 +545,92 @@ export default function LeavePanel({
 
         <div className="list" style={{ marginTop: 16 }}>
           {history.length === 0 && <div className="empty-state">No leave requests yet.</div>}
-          {history.map((row) => (
-            <div className="row leave-history-row" key={row.id}>
-              <div>
-                <strong>{pretty(row.leave_type)}</strong>
-                <div className="muted">
-                  {formatDate(row.start_date)} to {formatDate(row.end_date)} · {row.credits_requested} credit(s)
+          {history.map((row) => {
+            const details = historyDays[row.id] || []
+            return (
+              <div className="row leave-history-row" key={row.id}>
+                <div>
+                  <strong>{pretty(row.leave_type)}</strong>
+                  <div className="muted">
+                    {formatDate(row.start_date)} to {formatDate(row.end_date)} · {creditLabel(Number(row.credits_requested))}
+                  </div>
+                  {details.length > 0 && (
+                    <div className="leave-date-chips detailed history-chips">
+                      {details.map((day) => (
+                        <span key={day.leave_date}>
+                          {formatDate(day.leave_date)} · {Math.round(day.scheduled_minutes / 6) / 10}h · {Number(day.requested_credits)} cr
+                          {day.leave_period !== 'full_shift' ? ` · ${pretty(day.leave_period)}` : ''}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  <div className="leave-history-meta">
+                    {row.approval_mode === 'auto' ? 'Automatic approval' : 'Manager review'}
+                  </div>
                 </div>
-                <div className="leave-history-meta">
-                  {row.day_type === 'half' ? `${pretty(row.half_day_period || '')} · ` : ''}
-                  {row.approval_mode === 'auto' ? 'Automatic approval' : 'Manager review'}
-                </div>
+                <span className={`status-badge ${row.status}`}>{pretty(row.status)}</span>
               </div>
-              <span className={`status-badge ${row.status}`}>{pretty(row.status)}</span>
-            </div>
-          ))}
+            )
+          })}
         </div>
       </div>
+
+      {adjustModalOpen && preview && (
+        <div className="leave-modal-backdrop" role="presentation" onMouseDown={() => setAdjustModalOpen(false)}>
+          <div className="leave-modal" role="dialog" aria-modal="true" aria-label="Adjust leave days" onMouseDown={(event) => event.stopPropagation()}>
+            <div className="leave-modal-head">
+              <div>
+                <h2>Adjust leave days</h2>
+                <p className="muted">Each date defaults to the credit value of its scheduled shift.</p>
+              </div>
+              <button type="button" className="btn btn-secondary" onClick={() => setAdjustModalOpen(false)}>Close</button>
+            </div>
+
+            <div className="leave-day-editor-list">
+              {preview.day_details.map((day) => (
+                <div className="leave-day-editor" key={day.date}>
+                  <div className="leave-day-editor-date">
+                    <strong>{formatDate(day.date)}</strong>
+                    <span className="muted">
+                      {formatTime(day.start_time)} – {formatTime(day.end_time)} · {day.scheduled_hours} scheduled hour{day.scheduled_hours === 1 ? '' : 's'}
+                    </span>
+                  </div>
+
+                  <label className="field">
+                    <span>Leave amount</span>
+                    {day.max_credits === 0.5 ? (
+                      <div className="leave-locked-credit">Full scheduled shift · 0.5 credit</div>
+                    ) : (
+                      <select value={day.requested_credits} onChange={(event) => setDayCredits(day, Number(event.target.value))}>
+                        <option value={1}>Full scheduled shift · 1 credit</option>
+                        <option value={0.5}>Half shift · 0.5 credit</option>
+                      </select>
+                    )}
+                  </label>
+
+                  {day.max_credits === 1 && day.requested_credits === 0.5 && (
+                    <label className="field">
+                      <span>Half-shift period</span>
+                      <select value={day.leave_period} onChange={(event) => setDayPeriod(day, event.target.value as 'first_half' | 'second_half')}>
+                        <option value="first_half">First half</option>
+                        <option value="second_half">Second half</option>
+                      </select>
+                    </label>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            <div className="leave-modal-footer">
+              <div>
+                <span className="muted">Total leave</span>
+                <strong>{creditLabel(preview.credits)}</strong>
+              </div>
+              <button type="button" className="btn btn-primary" onClick={() => setAdjustModalOpen(false)}>Done</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
