@@ -16,9 +16,11 @@ type TimeEntry = {
 }
 
 export default function PortalTimeTracking({
+  employeeId,
   onMessage,
   onError,
 }: {
+  employeeId: string
   onMessage: (value: string) => void
   onError: (value: string) => void
 }) {
@@ -30,8 +32,8 @@ export default function PortalTimeTracking({
 
   async function load() {
     const [{ data: entries }, { data: breaks }] = await Promise.all([
-      supabase.from('time_entries').select('*').order('clock_in', { ascending: false }).limit(7),
-      supabase.from('breaks').select('id').is('ended_at', null).limit(1),
+      supabase.from('time_entries').select('*').eq('employee_id', employeeId).order('clock_in', { ascending: false }).limit(7),
+      supabase.from('breaks').select('id').eq('employee_id', employeeId).is('ended_at', null).limit(1),
     ])
     const rows = (entries || []) as TimeEntry[]
     setRecent(rows)
@@ -39,7 +41,7 @@ export default function PortalTimeTracking({
     setOnBreak(Boolean(breaks?.length))
   }
 
-  useEffect(() => { load() }, [])
+  useEffect(() => { load() }, [employeeId])
 
   async function run(fn: string, ok: string, action: string) {
     setBusyAction(action)
@@ -57,7 +59,7 @@ export default function PortalTimeTracking({
 
   return (
     <div className="stack">
-      <PortalLiveStatus refreshKey={refreshKey} />
+      <PortalLiveStatus employeeId={employeeId} refreshKey={refreshKey} />
 
       <div className="card">
         <div className="section-head">
