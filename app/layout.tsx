@@ -1,4 +1,5 @@
 import './globals.css'
+import './portal-advanced.css'
 import type { Metadata } from 'next'
 import LiveStatus from './live-status'
 
