@@ -1,6 +1,6 @@
 'use client'
 
-import { FormEvent, useEffect, useMemo, useState } from 'react'
+import { FormEvent, KeyboardEvent as ReactKeyboardEvent, useEffect, useMemo, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { DAYS, previewPacific, type ScheduleDraft } from '@/lib/schedule-utils'
 
@@ -59,6 +59,13 @@ type Override = {
   reason: string | null
 }
 
+function preventEnterSubmit(event: ReactKeyboardEvent<HTMLFormElement>) {
+  if (event.key === 'Enter') {
+    const target = event.target as HTMLElement
+    if (target.tagName !== 'TEXTAREA') event.preventDefault()
+  }
+}
+
 function pretty(value: string) {
   return value.replaceAll('_', ' ').replace(/\b\w/g, (c) => c.toUpperCase())
 }
@@ -66,6 +73,13 @@ function pretty(value: string) {
 function formatDate(value: string | null) {
   if (!value) return '—'
   return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric' }).format(new Date(`${value}T00:00:00`))
+}
+
+function todayInZone(timeZone: string) {
+  const parts = new Intl.DateTimeFormat('en-US', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date())
+  const map: Record<string, string> = {}
+  for (const part of parts) if (part.type !== 'literal') map[part.type] = part.value
+  return `${map.year}-${map.month}-${map.day}`
 }
 
 export default function PortalSchedule({ profile, onMessage, onError }: { profile: Profile; onMessage: (value: string) => void; onError: (value: string) => void }) {
@@ -85,11 +99,12 @@ export default function PortalSchedule({ profile, onMessage, onError }: { profil
   const [swapReason, setSwapReason] = useState('')
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState('')
+  const minDate = todayInZone(profile.timezone)
 
   async function load() {
     setLoading(true)
     const [currentResult, historyResult, requestResult, swapResult, peopleResult, rotationResult, overrideResult] = await Promise.all([
-      supabase.from('schedules').select('*').eq('employee_id', profile.id).is('effective_to', null),
+      supabase.rpc('get_my_current_schedule'),
       supabase.from('schedules').select('*').eq('employee_id', profile.id).order('effective_from', { ascending: false }).limit(35),
       supabase.from('schedule_requests').select('*').eq('employee_id', profile.id).order('created_at', { ascending: false }).limit(10),
       supabase.from('shift_swap_requests').select('*').or(`requester_id.eq.${profile.id},swap_with_id.eq.${profile.id}`).order('created_at', { ascending: false }).limit(10),
@@ -208,7 +223,7 @@ export default function PortalSchedule({ profile, onMessage, onError }: { profil
       <div className="two-column-grid">
         <div className="card">
           <div className="section-head"><div><h2>Request schedule change</h2><p className="muted">Changes only take effect after Manager approval.</p></div><span className="status-badge pending">Approval required</span></div>
-          <form className="stack" style={{ marginTop: 16 }} onSubmit={submitSchedule}>
+          <form className="stack" style={{ marginTop: 16 }} onSubmit={submitSchedule} onKeyDown={preventEnterSubmit}>
             <div className="compact-schedule-editor">
               {DAYS.map((day, index) => <div className="compact-schedule-row" key={day.name}>
                 <strong>{day.name}</strong>
@@ -218,7 +233,7 @@ export default function PortalSchedule({ profile, onMessage, onError }: { profil
               </div>)}
             </div>
             <div className="form-grid">
-              <label className="field"><span>Effective date</span><input type="date" value={effectiveDate} onChange={(e) => setEffectiveDate(e.target.value)} required /></label>
+              <label className="field"><span>Effective date</span><input type="date" min={minDate} value={effectiveDate} onChange={(e) => setEffectiveDate(e.target.value)} required /></label>
               <label className="field"><span>Reason</span><input value={scheduleReason} onChange={(e) => setScheduleReason(e.target.value)} placeholder="Why is the schedule changing?" required /></label>
             </div>
             <button className="btn btn-primary" disabled={busy === 'schedule'}>{busy === 'schedule' ? 'Submitting…' : 'Submit Schedule Request'}</button>
@@ -227,11 +242,11 @@ export default function PortalSchedule({ profile, onMessage, onError }: { profil
 
         <div className="card">
           <div className="section-head"><div><h2>Request shift swap</h2><p className="muted">Swap one scheduled shift with another active teammate.</p></div><span className="status-badge pending">Approval required</span></div>
-          <form className="stack" style={{ marginTop: 16 }} onSubmit={submitSwap}>
+          <form className="stack" style={{ marginTop: 16 }} onSubmit={submitSwap} onKeyDown={preventEnterSubmit}>
             <label className="field"><span>Swap with</span><select value={swapWithId} onChange={(e) => setSwapWithId(e.target.value)} required><option value="">Choose teammate</option>{people.map((person) => <option key={person.id} value={person.id}>{person.display_name} · {person.timezone}</option>)}</select></label>
             <div className="form-grid">
-              <label className="field"><span>Your shift date</span><input type="date" value={requesterDate} onChange={(e) => setRequesterDate(e.target.value)} required /></label>
-              <label className="field"><span>Their shift date</span><input type="date" value={swapWithDate} onChange={(e) => setSwapWithDate(e.target.value)} required /></label>
+              <label className="field"><span>Your shift date</span><input type="date" min={minDate} value={requesterDate} onChange={(e) => setRequesterDate(e.target.value)} required /></label>
+              <label className="field"><span>Their shift date</span><input type="date" min={minDate} value={swapWithDate} onChange={(e) => setSwapWithDate(e.target.value)} required /></label>
             </div>
             <label className="field"><span>Reason</span><textarea rows={3} value={swapReason} onChange={(e) => setSwapReason(e.target.value)} required /></label>
             <button className="btn btn-primary" disabled={busy === 'swap' || !swapWithId}>{busy === 'swap' ? 'Submitting…' : 'Submit Shift Swap'}</button>
@@ -264,7 +279,7 @@ export default function PortalSchedule({ profile, onMessage, onError }: { profil
         <div className="card">
           <h2>Schedule history</h2>
           <div className="list">
-            {groupedHistory.map(([date, group]) => <div className="row" key={date}><div><strong>Effective {formatDate(date)}</strong><div className="muted">{group.filter((r) => r.is_working).length} working day(s) · {group[0]?.notes || 'Schedule version'}</div></div><span className="pill">{group.some((r) => !r.effective_to) ? 'Current' : 'Historical'}</span></div>)}
+            {groupedHistory.map(([date, group]) => <div className="row" key={date}><div><strong>Effective {formatDate(date)}</strong><div className="muted">{group.filter((r) => r.is_working).length} working day(s) · {group[0]?.notes || 'Schedule version'}</div></div><span className="pill">{group.some((r) => !r.effective_to) ? 'Open-ended' : 'Historical'}</span></div>)}
           </div>
         </div>
         <div className="card">
