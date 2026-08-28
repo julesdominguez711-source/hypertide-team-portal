@@ -53,18 +53,7 @@ export default function PortalAuth() {
           <h1 className="title">Account created successfully</h1>
           <p className="subtitle">Your account is ready. Sign in to complete your Hypertide profile and schedule.</p>
           <div className="success" style={{ marginBottom: 16 }}>Registration successful.</div>
-          <button
-            type="button"
-            className="btn btn-primary"
-            style={{ width: '100%' }}
-            onClick={() => {
-              setSignupCompleted(false)
-              setMode('login')
-              setError('')
-            }}
-          >
-            Go to Login
-          </button>
+          <button type="button" className="btn btn-primary" style={{ width: '100%' }} onClick={() => { setSignupCompleted(false); setMode('login'); setError('') }}>Go to Login</button>
         </div>
       </div>
     )
@@ -74,43 +63,17 @@ export default function PortalAuth() {
     <div className="auth-wrap">
       <div className="card auth-card">
         <h1 className="title">Hypertide Team Portal</h1>
-        <p className="subtitle">Scheduling, attendance, leave, and approvals.</p>
+        <p className="subtitle">Schedules, leave, and team coverage.</p>
 
         <form className="stack" onSubmit={submit} onKeyDown={preventEnterSubmit}>
-          <label className="field">
-            <span>Email</span>
-            <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} required />
-          </label>
-
-          <label className="field">
-            <span>Password</span>
-            <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} minLength={8} required />
-          </label>
-
-          {mode === 'signup' && (
-            <label className="field">
-              <span>Confirm Password</span>
-              <input type="password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} minLength={8} required />
-            </label>
-          )}
-
+          <label className="field"><span>Email</span><input type="email" value={email} onChange={(event) => setEmail(event.target.value)} required /></label>
+          <label className="field"><span>Password</span><input type="password" value={password} onChange={(event) => setPassword(event.target.value)} minLength={8} required /></label>
+          {mode === 'signup' && <label className="field"><span>Confirm Password</span><input type="password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} minLength={8} required /></label>}
           {error && <div className="error">{error}</div>}
-
-          <button type="submit" className="btn btn-primary" disabled={busy}>
-            {busy ? 'Please wait…' : mode === 'login' ? 'Sign in' : 'Create account'}
-          </button>
+          <button type="submit" className="btn btn-primary" disabled={busy}>{busy ? 'Please wait…' : mode === 'login' ? 'Sign in' : 'Create account'}</button>
         </form>
 
-        <button
-          type="button"
-          className="btn btn-secondary"
-          style={{ marginTop: 12, width: '100%' }}
-          onClick={() => {
-            setMode(mode === 'login' ? 'signup' : 'login')
-            setConfirmPassword('')
-            setError('')
-          }}
-        >
+        <button type="button" className="btn btn-secondary" style={{ marginTop: 12, width: '100%' }} onClick={() => { setMode(mode === 'login' ? 'signup' : 'login'); setConfirmPassword(''); setError('') }}>
           {mode === 'login' ? 'Create a new account' : 'Already have an account? Sign in'}
         </button>
       </div>
