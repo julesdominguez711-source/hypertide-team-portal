@@ -4,7 +4,7 @@ import type { Metadata } from 'next'
 
 export const metadata: Metadata = {
   title: 'Hypertide Team Portal',
-  description: 'Internal scheduling, attendance, leave, and approvals portal',
+  description: 'Internal schedules, leave, and team coverage portal',
 }
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
