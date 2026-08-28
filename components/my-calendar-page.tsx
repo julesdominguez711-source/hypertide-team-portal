@@ -64,9 +64,6 @@ type LeavePreview = {
   auto_eligible: boolean
 }
 
-type OpenEntry = { id: string; clock_in: string }
-type OpenBreak = { id: string; started_at: string }
-
 type CalendarDay = {
   date: string
   dayNumber: number
@@ -84,15 +81,6 @@ function preventEnterSubmit(event: ReactKeyboardEvent<HTMLFormElement>) {
   }
 }
 
-function duration(from: string | null, now: Date) {
-  if (!from) return '00:00:00'
-  const seconds = Math.max(0, Math.floor((now.getTime() - new Date(from).getTime()) / 1000))
-  const h = Math.floor(seconds / 3600)
-  const m = Math.floor((seconds % 3600) / 60)
-  const s = seconds % 60
-  return [h, m, s].map((value) => String(value).padStart(2, '0')).join(':')
-}
-
 function clock(now: Date, timeZone: string) {
   return new Intl.DateTimeFormat('en-US', {
     timeZone,
@@ -100,6 +88,16 @@ function clock(now: Date, timeZone: string) {
     minute: '2-digit',
     second: '2-digit',
     hour12: true,
+  }).format(now)
+}
+
+function currentDateLabel(now: Date, timeZone: string) {
+  return new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    weekday: 'long',
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric',
   }).format(now)
 }
 
@@ -134,8 +132,6 @@ export default function MyCalendarPage({
   const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([])
   const [leaveDays, setLeaveDays] = useState<LeaveDay[]>([])
   const [summary, setSummary] = useState<LeaveSummary | null>(null)
-  const [entry, setEntry] = useState<OpenEntry | null>(null)
-  const [openBreak, setOpenBreak] = useState<OpenBreak | null>(null)
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState('')
   const [selectedDay, setSelectedDay] = useState<CalendarDay | null>(null)
@@ -171,29 +167,14 @@ export default function MyCalendarPage({
     else setSummary(data as LeaveSummary)
   }
 
-  async function loadAttendance() {
-    const [entryResult, breakResult] = await Promise.all([
-      supabase.from('time_entries').select('id,clock_in').eq('employee_id', profile.id).is('clock_out', null).order('clock_in', { ascending: false }).limit(1),
-      supabase.from('breaks').select('id,started_at').eq('employee_id', profile.id).is('ended_at', null).order('started_at', { ascending: false }).limit(1),
-    ])
-    if (entryResult.error || breakResult.error) onError((entryResult.error || breakResult.error)?.message || 'Unable to load attendance.')
-    setEntry((entryResult.data?.[0] as OpenEntry | undefined) || null)
-    setOpenBreak((breakResult.data?.[0] as OpenBreak | undefined) || null)
-  }
-
   useEffect(() => {
     loadCalendar()
   }, [profile.id, firstDate, lastDate])
 
   useEffect(() => {
     loadBalance()
-    loadAttendance()
     const tick = window.setInterval(() => setNow(new Date()), 1000)
-    const attendancePoll = window.setInterval(loadAttendance, 15000)
-    return () => {
-      window.clearInterval(tick)
-      window.clearInterval(attendancePoll)
-    }
+    return () => window.clearInterval(tick)
   }, [profile.id])
 
   const requestMap = useMemo(() => new Map(leaveRequests.map((request) => [request.id, request])), [leaveRequests])
@@ -250,20 +231,6 @@ export default function MyCalendarPage({
   const selectedPreviewDay = preview?.day_details?.[0] || null
   const maxCredits = selectedPreviewDay?.max_credits || 0
   const selectedCredits = maxCredits <= 0.5 ? maxCredits : leavePeriod === 'full_shift' ? maxCredits : 0.5
-  const attendanceStatus = openBreak ? 'On Break' : entry ? 'Working' : 'Not Clocked In'
-
-  async function runAttendance(fn: string, success: string, action: string) {
-    setBusy(action)
-    onError('')
-    onMessage('')
-    const { error } = await supabase.rpc(fn)
-    if (error) onError(error.message)
-    else {
-      onMessage(success)
-      await loadAttendance()
-    }
-    setBusy('')
-  }
 
   async function openLeave(day: CalendarDay) {
     if (!day.inMonth || day.status !== 'working') return
@@ -323,28 +290,20 @@ export default function MyCalendarPage({
         <div className={styles.panel}>
           <div className={styles.clockLabel}>{zoneLabel(now, profile.timezone)}</div>
           <div className={styles.clockTime}>{clock(now, profile.timezone)}</div>
+          <div className={styles.small}>{currentDateLabel(now, profile.timezone)}</div>
           <div className={styles.small}>{profile.timezone}</div>
         </div>
         <div className={styles.panel}>
           <div className={styles.clockLabel}>{zoneLabel(now, 'America/Los_Angeles')}</div>
           <div className={styles.clockTime}>{clock(now, 'America/Los_Angeles')}</div>
+          <div className={styles.small}>{currentDateLabel(now, 'America/Los_Angeles')}</div>
           <div className={styles.small}>Pacific Time</div>
         </div>
-        <div className={`${styles.panel} ${styles.attendancePanel}`}>
-          <div className={styles.statusBlock}>
-            <span className={styles.small}>Current attendance</span>
-            <div className={styles.statusText}><i className={`${styles.dot} ${entry ? styles.dotLive : ''}`} />{attendanceStatus}</div>
-            <div className={styles.actions}>
-              {!entry && <button type="button" className={`${styles.button} ${styles.primary}`} disabled={Boolean(busy)} onClick={() => runAttendance('clock_in_now', 'Clocked in successfully.', 'clockin')}>{busy === 'clockin' ? 'Clocking In…' : 'Clock In'}</button>}
-              {entry && !openBreak && <button type="button" className={`${styles.button} ${styles.secondary}`} disabled={Boolean(busy)} onClick={() => runAttendance('start_paid_break', 'Paid break started.', 'break')}>{busy === 'break' ? 'Starting…' : 'Start Break'}</button>}
-              {entry && openBreak && <button type="button" className={`${styles.button} ${styles.secondary}`} disabled={Boolean(busy)} onClick={() => runAttendance('end_paid_break', 'Break ended.', 'resume')}>{busy === 'resume' ? 'Resuming…' : 'Resume Work'}</button>}
-              {entry && <button type="button" className={`${styles.button} ${styles.primary}`} disabled={Boolean(busy)} onClick={() => runAttendance('clock_out_now', 'Clocked out successfully.', 'clockout')}>{busy === 'clockout' ? 'Clocking Out…' : 'Clock Out'}</button>}
-            </div>
-          </div>
-          <div className={styles.timerRow}>
-            {entry && <div className={styles.timer}><span>Shift</span><strong>{duration(entry.clock_in, now)}</strong></div>}
-            {openBreak && <div className={styles.timer}><span>Break</span><strong>{duration(openBreak.started_at, now)}</strong></div>}
-            <div className={styles.timer}><span>Leave balance</span><strong>{summary?.balance ?? '—'}</strong></div>
+        <div className={`${styles.panel} ${styles.balance}`}>
+          <div className={styles.balanceText}>
+            <span>Leave balance</span>
+            <strong>{summary?.balance ?? '—'} credits</strong>
+            <span>{summary?.hours_equivalent ?? 0} hours equivalent · {summary?.pending_credits || 0} pending</span>
           </div>
         </div>
       </div>
