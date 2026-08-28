@@ -35,6 +35,7 @@ button:disabled{cursor:not-allowed;opacity:.58}
 .btn-secondary{background:#eef2f7;color:#172033}
 .btn-secondary:hover:not(:disabled){background:#e2e8f0}
 .btn-danger{background:#fee2e2;color:#991b1b}
+.btn-small{padding:7px 10px;font-size:12px}
 
 .field{display:grid;gap:6px}
 .field>span{font-size:13px;font-weight:700;color:#334155}
@@ -97,6 +98,7 @@ button:disabled{cursor:not-allowed;opacity:.58}
 .leave-rule-list strong{font-size:13px}
 .leave-rule-list span{font-size:13px;color:#64748b}
 .leave-rule-footnote{font-size:12px;margin:14px 0 0;padding-top:12px;border-top:1px solid #eef2f7}
+.leave-credit-hint>div{border:1px solid #dbe2ea;background:#f8fafc;border-radius:10px;padding:10px 12px;color:#64748b;font-size:12px;line-height:1.45}
 .leave-preview{border:1px solid #e2e8f0;background:#f8fafc;border-radius:14px;padding:14px;display:grid;gap:12px;transition:border-color .16s ease,background-color .16s ease}
 .leave-preview.auto{border-color:#bbf7d0;background:#f0fdf4}
 .leave-preview-top{display:flex;justify-content:space-between;align-items:center;gap:12px}
@@ -104,6 +106,9 @@ button:disabled{cursor:not-allowed;opacity:.58}
 .leave-warning{font-size:13px;color:#991b1b;background:#fee2e2;padding:10px 12px;border-radius:10px}
 .leave-date-chips{display:flex;gap:7px;flex-wrap:wrap}
 .leave-date-chips span{font-size:11px;font-weight:700;padding:5px 8px;border-radius:999px;background:#fff;border:1px solid #dbe2ea;color:#475569}
+.leave-date-chips.detailed span{background:#fff;box-shadow:0 1px 2px rgba(15,23,42,.03)}
+.review-chips,.history-chips{margin-top:8px}
+.leave-reason{margin-top:8px}
 .status-badge{display:inline-flex;align-items:center;padding:6px 10px;border-radius:999px;font-size:11px;font-weight:800;text-transform:capitalize;background:#f1f5f9;color:#475569;white-space:nowrap}
 .status-badge.approved{background:#dcfce7;color:#166534}
 .status-badge.pending{background:#fef3c7;color:#92400e}
@@ -112,8 +117,25 @@ button:disabled{cursor:not-allowed;opacity:.58}
 .leave-review-detail{font-size:13px;font-weight:700;color:#334155;margin-top:5px}
 .leave-history-meta{font-size:12px;color:#6366f1;font-weight:700;margin-top:5px}
 
+.leave-modal-backdrop{position:fixed;inset:0;z-index:1000;background:rgba(15,23,42,.58);display:grid;place-items:center;padding:24px;backdrop-filter:blur(4px);animation:fadeModal .16s ease-out}
+.leave-modal{width:min(780px,100%);max-height:min(760px,calc(100vh - 48px));overflow:auto;background:#fff;border:1px solid #e2e8f0;border-radius:20px;box-shadow:0 30px 80px rgba(15,23,42,.3);padding:20px}
+.leave-modal-head{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;padding-bottom:16px;border-bottom:1px solid #eef2f7}
+.leave-modal-head h2{margin:0 0 4px}
+.leave-modal-head p{margin:0}
+.leave-day-editor-list{display:grid;gap:12px;padding:16px 0}
+.leave-day-editor{display:grid;grid-template-columns:minmax(220px,1.2fr) minmax(210px,1fr) minmax(180px,.85fr);gap:14px;align-items:end;border:1px solid #e5e7eb;border-radius:14px;padding:14px;background:#fbfcff}
+.leave-day-editor-date{display:grid;gap:4px;align-self:center}
+.leave-day-editor-date strong{font-size:15px}
+.leave-day-editor-date span{font-size:12px}
+.leave-locked-credit{border:1px solid #dbe2ea;background:#f1f5f9;color:#475569;border-radius:10px;padding:11px 12px;font-size:13px;font-weight:700}
+.leave-modal-footer{display:flex;justify-content:space-between;align-items:center;gap:16px;border-top:1px solid #eef2f7;padding-top:16px}
+.leave-modal-footer>div{display:grid;gap:2px}
+.leave-modal-footer>div span{font-size:12px}
+.leave-modal-footer>div strong{font-size:22px}
+
 @keyframes livePulse{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(1.18);opacity:.7}}
 @keyframes fadeSlide{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:translateY(0)}}
+@keyframes fadeModal{from{opacity:0}to{opacity:1}}
 
 @media(max-width:1100px){
   .leave-summary-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
@@ -132,6 +154,7 @@ button:disabled{cursor:not-allowed;opacity:.58}
   .welcome-title{font-size:28px}
   .live-attendance-head{align-items:flex-start;flex-direction:column}
   .live-timer-block{width:100%}
+  .leave-day-editor{grid-template-columns:1fr}
 }
 
 @media(max-width:620px){
@@ -139,4 +162,8 @@ button:disabled{cursor:not-allowed;opacity:.58}
   .leave-summary-grid{grid-template-columns:1fr}
   .leave-preview-top{align-items:flex-start;flex-direction:column}
   .row{align-items:flex-start;flex-direction:column}
+  .leave-modal-backdrop{padding:10px}
+  .leave-modal{max-height:calc(100vh - 20px);padding:16px;border-radius:16px}
+  .leave-modal-head,.leave-modal-footer{align-items:stretch;flex-direction:column}
+  .leave-modal-footer .btn{width:100%}
 }
