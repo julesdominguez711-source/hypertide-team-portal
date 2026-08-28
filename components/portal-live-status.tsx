@@ -35,15 +35,15 @@ function pacificLabel(now: Date) {
   return value || 'PT'
 }
 
-export default function PortalLiveStatus({ refreshKey = 0 }: { refreshKey?: number }) {
+export default function PortalLiveStatus({ employeeId, refreshKey = 0 }: { employeeId: string; refreshKey?: number }) {
   const [now, setNow] = useState(new Date())
   const [entry, setEntry] = useState<OpenEntry | null>(null)
   const [openBreak, setOpenBreak] = useState<OpenBreak | null>(null)
 
   async function loadAttendance() {
     const [{ data: entries }, { data: breaks }] = await Promise.all([
-      supabase.from('time_entries').select('id,clock_in').is('clock_out', null).order('clock_in', { ascending: false }).limit(1),
-      supabase.from('breaks').select('id,started_at').is('ended_at', null).order('started_at', { ascending: false }).limit(1),
+      supabase.from('time_entries').select('id,clock_in').eq('employee_id', employeeId).is('clock_out', null).order('clock_in', { ascending: false }).limit(1),
+      supabase.from('breaks').select('id,started_at').eq('employee_id', employeeId).is('ended_at', null).order('started_at', { ascending: false }).limit(1),
     ])
     setEntry((entries?.[0] as OpenEntry | undefined) || null)
     setOpenBreak((breaks?.[0] as OpenBreak | undefined) || null)
@@ -58,7 +58,7 @@ export default function PortalLiveStatus({ refreshKey = 0 }: { refreshKey?: numb
     loadAttendance()
     const poll = window.setInterval(loadAttendance, 15000)
     return () => window.clearInterval(poll)
-  }, [refreshKey])
+  }, [employeeId, refreshKey])
 
   const status = openBreak ? 'On Break' : entry ? 'Working' : 'Not Clocked In'
 
