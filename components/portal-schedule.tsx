@@ -13,7 +13,7 @@ type ScheduleRecord = ScheduleDraft & {
   effective_to: string | null
 }
 
-type Profile = { timezone: string }
+type Profile = { id: string; timezone: string }
 
 export default function PortalSchedule({ profile }: { profile: Profile }) {
   const [rows, setRows] = useState<ScheduleRecord[]>([])
@@ -21,12 +21,16 @@ export default function PortalSchedule({ profile }: { profile: Profile }) {
 
   async function load() {
     setLoading(true)
-    const { data } = await supabase.from('schedules').select('*').is('effective_to', null)
+    const { data } = await supabase
+      .from('schedules')
+      .select('*')
+      .eq('employee_id', profile.id)
+      .is('effective_to', null)
     setRows((data || []) as ScheduleRecord[])
     setLoading(false)
   }
 
-  useEffect(() => { load() }, [])
+  useEffect(() => { load() }, [profile.id])
 
   const byWeekday = new Map<number, ScheduleRecord>(rows.map((row) => [row.weekday, row] as [number, ScheduleRecord]))
 
