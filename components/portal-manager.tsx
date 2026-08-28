@@ -47,6 +47,7 @@ export default function PortalManager({ currentProfile, onMessage, onError }: { 
   }
 
   const tabs: Section[] = ['Overview', 'Approvals', 'People', 'Schedules', 'Corrections', 'Audit']
+  const managementRole: 'admin' | 'manager' = currentProfile.role === 'admin' ? 'admin' : 'manager'
 
   return <div className="stack manager-portal">
     <div className="manager-tabs">
@@ -55,7 +56,7 @@ export default function PortalManager({ currentProfile, onMessage, onError }: { 
 
     {section === 'Overview' && <ManagerOverview pendingCount={pendingCount} onError={onError} />}
     {section === 'Approvals' && <ManagerApprovals onMessage={onMessage} onError={onError} onCountChange={(value) => { handleApprovalCount(value); loadShared() }} />}
-    {section === 'People' && <ManagerPeople currentRole={currentProfile.role} onMessage={onMessage} onError={onError} />}
+    {section === 'People' && <ManagerPeople currentRole={managementRole} onMessage={onMessage} onError={onError} />}
     {section === 'Schedules' && <ManagerScheduleEditor people={schedulePeople} onMessage={onMessage} onError={onError} />}
     {section === 'Corrections' && <ManagerCorrections onMessage={onMessage} onError={onError} />}
     {section === 'Audit' && <ManagerAudit onError={onError} />}
