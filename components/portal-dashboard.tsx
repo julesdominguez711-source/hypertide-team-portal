@@ -1,6 +1,7 @@
 'use client'
 
 import PortalLiveStatus from '@/components/portal-live-status'
+import ScheduleCalendar from '@/components/schedule-calendar'
 
 type Profile = {
   id: string
@@ -13,6 +14,8 @@ function prettyRole(role: string) {
 }
 
 export default function PortalDashboard({ profile }: { profile: Profile }) {
+  const teammateView = profile.role === 'teammate' || profile.role === 'dev'
+
   return (
     <div className="stack">
       <PortalLiveStatus employeeId={profile.id} />
@@ -21,6 +24,7 @@ export default function PortalDashboard({ profile }: { profile: Profile }) {
         <div className="card interactive-card"><div className="muted">Timezone</div><div className="metric" style={{ fontSize: 22 }}>{profile.timezone}</div></div>
         <div className="card interactive-card"><div className="muted">Position</div><div className="metric">{prettyRole(profile.role)}</div></div>
       </div>
+      {teammateView && <ScheduleCalendar employeeId={profile.id} timezone={profile.timezone} />}
     </div>
   )
 }
