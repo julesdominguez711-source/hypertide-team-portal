@@ -1,6 +1,6 @@
 'use client'
 
-import { FormEvent, useEffect, useState } from 'react'
+import { FormEvent, KeyboardEvent as ReactKeyboardEvent, useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 
 const supabase = createClient()
@@ -11,6 +11,13 @@ type TimeEntry = { id: string; employee_id: string; work_date: string; clock_in:
 function name(profile: Profile) { return profile.nickname || profile.full_name || profile.email }
 function pretty(value: string) { return value.replaceAll('_', ' ').replace(/\b\w/g, (c) => c.toUpperCase()) }
 function ptLabel(value: string | null) { if (!value) return '—'; return new Intl.DateTimeFormat('en-US', { timeZone: 'America/Los_Angeles', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true }).format(new Date(value)) + ' PT' }
+
+function preventEnterSubmit(event: ReactKeyboardEvent<HTMLFormElement>) {
+  if (event.key === 'Enter') {
+    const target = event.target as HTMLElement
+    if (target.tagName !== 'TEXTAREA') event.preventDefault()
+  }
+}
 
 function pacificInput(value: string | null) {
   if (!value) return ''
@@ -103,6 +110,6 @@ export default function ManagerCorrections({ onMessage, onError }: { onMessage: 
       {entries.map((entry) => <div className="row" key={entry.id}><div><strong>{entry.work_date}</strong><div className="muted">{ptLabel(entry.clock_in)} → {ptLabel(entry.clock_out)} · {pretty(entry.status)}</div><div className="entry-meta">{entry.is_unscheduled ? 'Unscheduled' : 'Scheduled'} · {entry.ot_eligible ? 'OT eligible' : 'No OT'}</div></div><button className="btn btn-secondary" onClick={() => edit(entry)}>Edit</button></div>)}
     </div>
 
-    {target && <div className="modal-backdrop" onMouseDown={(e) => { if (e.currentTarget === e.target) setTarget(null) }}><div className="modal-card"><div className="section-head"><div><h2>Correct time entry</h2><p className="muted">Pacific Time · {target.work_date}</p></div><button type="button" className="icon-button" onClick={() => setTarget(null)}>×</button></div><form className="stack" style={{ marginTop: 16 }} onSubmit={save}><label className="field"><span>Clock in (Pacific)</span><input type="datetime-local" value={clockIn} onChange={(e) => setClockIn(e.target.value)} required /></label><label className="field"><span>Clock out (Pacific)</span><input type="datetime-local" value={clockOut} onChange={(e) => setClockOut(e.target.value)} /></label><label className="field"><span>Correction reason</span><textarea rows={3} value={reason} onChange={(e) => setReason(e.target.value)} required /></label><div className="actions"><button type="button" className="btn btn-secondary" onClick={() => setTarget(null)}>Cancel</button><button className="btn btn-primary" disabled={busy || !reason.trim()}>{busy ? 'Saving…' : 'Save Correction'}</button></div></form></div></div>}
+    {target && <div className="modal-backdrop" onMouseDown={(e) => { if (e.currentTarget === e.target) setTarget(null) }}><div className="modal-card"><div className="section-head"><div><h2>Correct time entry</h2><p className="muted">Pacific Time · {target.work_date}</p></div><button type="button" className="icon-button" onClick={() => setTarget(null)}>×</button></div><form className="stack" style={{ marginTop: 16 }} onSubmit={save} onKeyDown={preventEnterSubmit}><label className="field"><span>Clock in (Pacific)</span><input type="datetime-local" value={clockIn} onChange={(e) => setClockIn(e.target.value)} required /></label><label className="field"><span>Clock out (Pacific)</span><input type="datetime-local" value={clockOut} onChange={(e) => setClockOut(e.target.value)} /></label><label className="field"><span>Correction reason</span><textarea rows={3} value={reason} onChange={(e) => setReason(e.target.value)} required /></label><div className="actions"><button type="button" className="btn btn-secondary" onClick={() => setTarget(null)}>Cancel</button><button className="btn btn-primary" disabled={busy || !reason.trim()}>{busy ? 'Saving…' : 'Save Correction'}</button></div></form></div></div>}
   </div>
 }
