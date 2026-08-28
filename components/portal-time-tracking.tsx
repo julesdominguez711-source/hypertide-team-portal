@@ -1,6 +1,6 @@
 'use client'
 
-import { FormEvent, useEffect, useMemo, useState } from 'react'
+import { FormEvent, KeyboardEvent as ReactKeyboardEvent, useEffect, useMemo, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import PortalLiveStatus from '@/components/portal-live-status'
 
@@ -26,6 +26,13 @@ type OtRequest = {
   status: string
   review_note: string | null
   created_at: string
+}
+
+function preventEnterSubmit(event: ReactKeyboardEvent<HTMLFormElement>) {
+  if (event.key === 'Enter') {
+    const target = event.target as HTMLElement
+    if (target.tagName !== 'TEXTAREA') event.preventDefault()
+  }
 }
 
 function minutesLabel(minutes: number) {
@@ -166,7 +173,7 @@ export default function PortalTimeTracking({
       {otTarget && <div className="modal-backdrop" onMouseDown={(e) => { if (e.target === e.currentTarget) setOtTarget(null) }}>
         <div className="modal-card">
           <div className="section-head"><div><h2>Submit OT request</h2><p className="muted">{otTarget.work_date} · this request cannot auto-approve.</p></div><button type="button" className="icon-button" onClick={() => setOtTarget(null)}>×</button></div>
-          <form className="stack" style={{ marginTop: 16 }} onSubmit={submitOt}>
+          <form className="stack" style={{ marginTop: 16 }} onSubmit={submitOt} onKeyDown={preventEnterSubmit}>
             <label className="field"><span>Reason / work completed</span><textarea rows={4} value={otReason} onChange={(e) => setOtReason(e.target.value)} placeholder="Optional context for your Manager" /></label>
             <div className="actions"><button type="button" className="btn btn-secondary" onClick={() => setOtTarget(null)}>Cancel</button><button className="btn btn-primary" disabled={busyAction === 'ot'}>{busyAction === 'ot' ? 'Submitting…' : 'Submit OT'}</button></div>
           </form>
