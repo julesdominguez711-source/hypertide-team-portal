@@ -222,7 +222,6 @@ export default function LeavePanel({
     let cancelled = false
 
     async function runPreview() {
-      setPreview(null)
       setPreviewError('')
       if (!start || !end) return
 
@@ -260,11 +259,15 @@ export default function LeavePanel({
   function changeStart(value: string) {
     setStart(value)
     if (end && value > end) setEnd(value)
+    setPreview(null)
+    setPreviewError('')
     resetAdjustments()
   }
 
   function changeEnd(value: string) {
     setEnd(value)
+    setPreview(null)
+    setPreviewError('')
     resetAdjustments()
   }
 
@@ -422,14 +425,14 @@ export default function LeavePanel({
 
             {(start || end) && (
               <div className={`leave-preview ${preview?.auto_eligible ? 'auto' : ''}`}>
-                {previewBusy && <div className="muted">Checking your schedule and leave rules…</div>}
+                {previewBusy && !preview && <div className="muted">Checking your schedule and leave rules…</div>}
                 {previewError && <div className="error">{previewError}</div>}
-                {preview && !previewBusy && (
+                {preview && (
                   <>
                     <div className="leave-preview-top">
                       <div>
                         <strong>{preview.scheduled_days} scheduled day{preview.scheduled_days === 1 ? '' : 's'}</strong>
-                        <div className="muted">{creditLabel(preview.credits)} will be used</div>
+                        <div className="muted">{creditLabel(preview.credits)} will be used{previewBusy ? ' · recalculating…' : ''}</div>
                       </div>
                       <div className="actions">
                         {preview.day_details.length > 0 && (
